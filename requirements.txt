@@ -3,7 +3,7 @@ scipy
 scikit-learn
 ipykernel==6.29.0
 matplotlib==3.8.2
-tqdm==4.64.1
+tqdm==4.66.3
 cvxpy==1.4.0
 pandas==2.0.3
 crowd-kit==1.2.1
