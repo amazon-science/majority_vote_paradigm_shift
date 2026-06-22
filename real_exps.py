@@ -20,7 +20,9 @@ if __name__ == '__main__':
         all_results = {}
         all_p_values = {}
         data_list  = sorted([entry for entry in os.listdir('data') if os.path.isdir(os.path.join('data', entry))])
+
         for item in tqdm(data_list):
+            print(f"Dataset: {item}")
             data = pd.read_csv(f'data/{item}/label.csv') 
             real_labels = pd.read_csv(f'data/{item}/truth.csv')
             dataset_stat = str(np.round(compute_dataset_stats(real_labels),2))
@@ -65,7 +67,7 @@ if __name__ == '__main__':
                     result = method.fit_predict(data)
                     all_results[item_mod][method_name] = {}
                     all_results[item_mod][method_name]['Result'] = round(compute_exact_predictions(real_labels, result), 3)
-                    t_value, p_value = stats.wilcoxon(result, oracle_results)
+                    t_value, p_value = stats.wilcoxon(result.astype(float), oracle_results)
                     all_results[item_mod][method_name]['T value'] = round(t_value, 6)
                     all_p_values[method_name] = round(p_value, 6)
 

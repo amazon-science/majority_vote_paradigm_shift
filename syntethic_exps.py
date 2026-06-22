@@ -53,7 +53,7 @@ def to_LA(input_data:list):
     e2wl, w2el, label_set = gete2wlandw2el(None, input_data)
     return e2wl, w2el, label_set
 
-def generate_exps(num_classes:int, num_samples:int, vu: float,
+def generate_exps(num_classes:int, num_samples:int, vu: np.array,
                   H:int, T:np.array, return_toloka:bool=False):
     """
     Given:
@@ -63,7 +63,7 @@ def generate_exps(num_classes:int, num_samples:int, vu: float,
     vu: distribuution of the classes
     T: noise transition matrix
     Generates the required experiments."""
-    true_labels = generate_true_labels(C=num_classes, N=num_samples, D=[vu, 1-vu])
+    true_labels = generate_true_labels(C=num_classes, N=num_samples, D=vu)
     data = generate_annotations(true_labels, T, H=H, obtain_list=True,
                                 check_conditions=False)
     if return_toloka:
@@ -80,8 +80,8 @@ if __name__ == '__main__':
     H = 3
     num_classes = 2
     num_samples = 10000
-    vu_values = np.array([x/10 for x in range(1,10)])
-    T_values = ([np.array([[0.8,0.2], [0.2,0.8]]), np.array([[0.51,0.49], [0.49,0.51]]),
+    vu_values = np.array([[0.1,0.9]])
+    T_values = np.array([np.array([[0.8,0.2], [0.2,0.8]]), np.array([[0.51,0.49], [0.49,0.51]]),
                          np.array([[0.9,0.1], [0.1,0.9]]), np.array([[0.6,0.4], [0.4,0.6]]),
                          np.array([[0.7,0.3], [0.3,0.7]]),
                         np.array([[0.6,0.4], [0.25,0.75]]), np.array([[0.6,0.4], [0.1, 0.9]])])
@@ -92,55 +92,58 @@ if __name__ == '__main__':
         seed_everything(seed=seed)
         for index, T in enumerate(T_values):
             results[index] = {}
-            for vu in tqdm(vu_values):
-                results[index][vu] = {}
+            for index_vu, vu in enumerate(vu_values):
+                results[index][index_vu] = {}
                 data, true_labels, toloka_data = generate_exps(num_classes=num_classes, num_samples=num_samples, vu=vu,
                             H=H, T=T, return_toloka=True)
                 
                 oracle_results = list(oracle_MAP(data, T, np.array([vu, 1-vu])).values())
-                results[index][vu]['Oracle MAP'] = {}
-                results[index][vu]['Oracle MAP']['Result'] = accuracy(true_labels, oracle_results)
+                results[index][index_vu]['Oracle MAP'] = {}
+                results[index][index_vu]['Oracle MAP']['Result'] = accuracy(true_labels, oracle_results)
 
                 iaa = InterAnnotatorAgreementAPI(data)
                 iaa._build_t_matrix()
                 estimated_map = list(oracle_MAP(data, iaa._t_hat, np.array(iaa._label_distribution)).values())
-                results[index][vu]['Estimated MAP'] = {} 
-                results[index][vu]['Estimated MAP']['Result'] = accuracy(true_labels, estimated_map)
+                results[index][index_vu]['Estimated MAP'] = {} 
+                results[index][index_vu]['Estimated MAP']['Result'] = accuracy(true_labels, estimated_map)
                 if estimated_map != oracle_results:
                     t_value, p_value = stats.wilcoxon(estimated_map, oracle_results)
                 else:
                     t_value, p_value = -1, -1
-                results[index][vu]['Estimated MAP']['T value'] = round(t_value, 6)
+                results[index][index_vu]['Estimated MAP']['T value'] = round(t_value, 6)
                 all_p_values['Estimated MAP'] = p_value
+                
 
                 e2wl, w2el, label_set = to_LA(data)
                 for method in other_methods:
                     result = obtain_competitor_results(method, e2wl, w2el, label_set, binary=True)
-                    results[index][vu][method] = {}
-                    results[index][vu][method]['Result'] = accuracy(true_labels, result)
+                    results[index][index_vu][method] = {}
+                    results[index][index_vu][method]['Result'] = accuracy(true_labels, result)
                     if result != oracle_results:
                         t_value, p_value = stats.wilcoxon(result, oracle_results)
                     else:
                         t_value, p_value = -1, -1
-                    results[index][vu][method]['T value'] = round(t_value, 6)
+                    results[index][index_vu][method]['T value'] = round(t_value, 6)
                     all_p_values[method] = round(p_value, 6)
 
 
                 for method_name in toloka_methods:
                     method = obtain_toloka_method(method_name)
                     result = method.fit_predict(toloka_data)
-                    results[index][vu][method_name] = {}
-                    results[index][vu][method_name]['Result'] = accuracy(true_labels, result)
+                    results[index][index_vu][method_name] = {}
+                    results[index][index_vu][method_name]['Result'] = accuracy(true_labels, result)
                     if result.values.tolist() != oracle_results:
-                        t_value, p_value = stats.wilcoxon(result, oracle_results)
+                        t_value, p_value = stats.wilcoxon(result.astype(int), oracle_results)
                     else:
                         t_value, p_value = -1, -1
-                    results[index][vu][method_name]['T value'] = round(t_value, 6)
+                    results[index][index_vu][method_name]['T value'] = round(t_value, 6)
                     all_p_values[method_name] = round(p_value, 6)
 
                 rejected , corrected_p_values, _, _ = multipletests(list(all_p_values.values()), alpha=0.05, method='bonferroni')
                 for (name, value), reject  in zip(all_p_values.items(), rejected):
-                    results[index][vu][name]['Stat Sig'] = reject
+                    results[index][index_vu][name]['Stat Sig'] = reject
+                    
+                print(results)
         df = flatten_synthetic_results(results)
         df = df.round(decimals=4)
         os.makedirs('results', exist_ok=True)
@@ -150,7 +153,7 @@ if __name__ == '__main__':
             results[seed] = {}
             for index, T in enumerate(T_values):
                 results[seed][index] = {}
-                for vu in tqdm(vu_values):
+                for index_vu, vu in enumerate(vu_values):
                     results[seed][index][vu] = {}
                     data, true_labels, toloka_data = generate_exps(num_classes=num_classes, num_samples=num_samples, vu=vu,
                                 H=H, T=T, return_toloka=True)
